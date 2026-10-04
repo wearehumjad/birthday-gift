@@ -740,17 +740,6 @@
 
         let customAudioUrl = 'tumho.mp3';
         let isAudioPlaying = false;
-        let audioCtx = null;
-        let melodyInterval = null;
-
-        // Romantic synthesizer melody fallback frequencies
-        const melody = [
-            261.63, 261.63, 293.66, 261.63, 349.23, 329.63,
-            261.63, 261.63, 293.66, 261.63, 392.00, 349.23,
-            261.63, 261.63, 523.25, 440.00, 349.23, 329.63, 293.66,
-            466.16, 466.16, 440.00, 349.23, 392.00, 349.23
-        ];
-        let noteIndex = 0;
 
         // Clipboard Copy Helper Function
         function copyToClipboard(text) {
@@ -809,9 +798,15 @@
             }
 
             if (music) {
-                customAudioUrl = 'tumho.mp3';
+                customAudioUrl = music.trim();
                 const configMusic = document.getElementById('configMusicUrl');
-                if (configMusic) configMusic.value = music;
+                const presetMusic = document.getElementById('configPresetMusic');
+                if (configMusic) configMusic.value = customAudioUrl;
+                if (presetMusic) {
+                    presetMusic.value = Array.from(presetMusic.options).some(o => o.value === customAudioUrl)
+                        ? customAudioUrl
+                        : '';
+                }
             }
 
             if (letter) {
@@ -914,118 +909,134 @@
             toggleAudio(true);
         }
 
-        // Audio Source URL Parser (Spotify / YouTube / Direct MP3)
+        // Audio Source Parser (Spotify / YouTube / Direct MP3)
+        // IMPORTANT: never substitute another song if the selected source fails.
         function parseAudioUrl(url) {
-            if (!url) return { type: 'mp3', embedUrl: 'https://cdn.pixabay.com/download/audio/2022/05/27/audio_1808fbf07a.mp3?filename=romantic-piano-112181.mp3' };
+            if (!url || !url.trim()) return { type: 'none', embedUrl: '' };
             url = url.trim();
 
             if (url.includes('spotify.com')) {
                 let trackId = '';
                 if (url.includes('/track/')) {
-                    trackId = url.split('/track/')[1].split('?')[0];
+                    trackId = url.split('/track/')[1].split(/[?#]/)[0];
                 } else if (url.includes('spotify:track:')) {
-                    trackId = url.split('spotify:track:')[1];
+                    trackId = url.split('spotify:track:')[1].split(/[?#]/)[0];
                 }
                 if (trackId) {
-                    return { type: 'spotify', embedUrl: `https://open.spotify.com/embed/track/${trackId}?utm_source=generator&theme=0` };
+                    return { type: 'spotify', embedUrl: `https://open.spotify.com/embed/track/${encodeURIComponent(trackId)}?utm_source=generator&theme=0` };
                 }
             }
 
             if (url.includes('youtube.com') || url.includes('youtu.be')) {
                 let videoId = '';
-                if (url.includes('v=')) {
-                    videoId = url.split('v=')[1].split('&')[0];
-                } else if (url.includes('youtu.be/')) {
-                    videoId = url.split('youtu.be/')[1].split('?')[0];
-                }
+                try {
+                    const parsedUrl = new URL(url);
+                    if (parsedUrl.hostname.includes('youtu.be')) {
+                        videoId = parsedUrl.pathname.slice(1).split('/')[0];
+                    } else {
+                        videoId = parsedUrl.searchParams.get('v') || '';
+                        if (!videoId && parsedUrl.pathname.startsWith('/shorts/')) {
+                            videoId = parsedUrl.pathname.split('/')[2] || '';
+                        }
+                    }
+                } catch (e) {}
                 if (videoId) {
-                    return { type: 'youtube', embedUrl: `https://www.youtube.com/embed/${videoId}?autoplay=1&enablejsapi=1` };
+                    return { type: 'youtube', embedUrl: `https://www.youtube.com/embed/${encodeURIComponent(videoId)}?autoplay=1&enablejsapi=1` };
                 }
             }
 
             return { type: 'mp3', embedUrl: url };
         }
 
-        function toggleAudio(forceStart = false) {
+        function updateMusicButton(playing) {
             const musicText = document.getElementById('musicText');
             const musicIcon = document.getElementById('musicIcon');
             const pulseRing = document.getElementById('pulseRing');
+            if (musicText) musicText.innerText = playing ? "Music Playing 💕" : "Play Music";
+            if (musicIcon) musicIcon.className = playing ? "fas fa-heart text-rose-500 animate-bounce" : "fas fa-music text-rose-500";
+            if (pulseRing) pulseRing.classList.toggle('hidden', !playing);
+        }
+
+        function stopAudio() {
+            isAudioPlaying = false;
+            const frameHolder = document.getElementById('embedFrameHolder');
+            const embedContainer = document.getElementById('embedPlayerContainer');
+            const customAudio = document.getElementById('customAudio');
+            if (customAudio) {
+                customAudio.pause();
+                customAudio.removeAttribute('src');
+                customAudio.load();
+                customAudio.onended = null;
+                customAudio.onerror = null;
+            }
+            if (frameHolder) frameHolder.innerHTML = '';
+            if (embedContainer) embedContainer.classList.add('hidden');
+            updateMusicButton(false);
+        }
+
+        function toggleAudio(forceStart = false) {
             const embedContainer = document.getElementById('embedPlayerContainer');
             const frameHolder = document.getElementById('embedFrameHolder');
             const customAudio = document.getElementById('customAudio');
             const spotifyTip = document.getElementById('spotifyTapTip');
             const label = document.getElementById('playerTypeLabel');
 
-            if (forceStart) isAudioPlaying = false;
-
-            if (!isAudioPlaying) {
-                isAudioPlaying = true;
-                if (musicText) musicText.innerText = "Music Playing 💕";
-                if (musicIcon) musicIcon.className = "fas fa-heart text-rose-500 animate-bounce";
-                if (pulseRing) pulseRing.classList.remove('hidden');
-
-                const parsed = parseAudioUrl(customAudioUrl);
-
-                if (parsed.type === 'spotify') {
-                    if (embedContainer) embedContainer.classList.remove('hidden');
-                    if (spotifyTip) spotifyTip.classList.remove('hidden');
-                    if (label) label.innerText = "Spotify Audio Player";
-                    if (frameHolder) frameHolder.innerHTML = `<iframe src="${parsed.embedUrl}" width="100%" height="80" frameborder="0" allowfullscreen="" allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture" loading="lazy"></iframe>`;
-                } else if (parsed.type === 'youtube') {
-                    if (embedContainer) embedContainer.classList.remove('hidden');
-                    if (spotifyTip) spotifyTip.classList.remove('hidden');
-                    if (label) label.innerText = "YouTube Music Player";
-                    if (frameHolder) frameHolder.innerHTML = `<iframe src="${parsed.embedUrl}" width="100%" height="80" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>`;
-                } else {
-                    // Direct MP3 Audio playback
-                    if (embedContainer) embedContainer.classList.add('hidden');
-                    if (customAudio) {
-                        customAudio.src = parsed.embedUrl;
-                        customAudio.play().catch(err => {
-                            console.log("MP3 play fallback to synth", err);
-                            startSynthMelody();
-                        });
-                    }
-                }
-                showToast("Playing romantic background music 🎵");
-            } else {
-                isAudioPlaying = false;
-                if (musicText) musicText.innerText = "Play Music";
-                if (musicIcon) musicIcon.className = "fas fa-music text-rose-500";
-                if (pulseRing) pulseRing.classList.add('hidden');
-
-                if (frameHolder) frameHolder.innerHTML = '';
-                if (embedContainer) embedContainer.classList.add('hidden');
-                if (customAudio) customAudio.pause();
-                clearInterval(melodyInterval);
+            if (forceStart) stopAudio();
+            if (isAudioPlaying) {
+                stopAudio();
+                return;
             }
-        }
 
-        function startSynthMelody() {
-            if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-            if (audioCtx.state === 'suspended') audioCtx.resume();
-            noteIndex = 0;
-            clearInterval(melodyInterval);
-            melodyInterval = setInterval(() => {
-                playSynthNote(melody[noteIndex], 0.8);
-                noteIndex = (noteIndex + 1) % melody.length;
-            }, 520);
-        }
+            const parsed = parseAudioUrl(customAudioUrl);
+            if (parsed.type === 'none') {
+                showToast("Please select or enter a song first 🎵");
+                return;
+            }
 
-        function playSynthNote(freq, duration) {
-            if (!audioCtx) return;
-            try {
-                const osc = audioCtx.createOscillator();
-                const gain = audioCtx.createGain();
-                osc.type = 'sine';
-                osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
-                gain.gain.setValueAtTime(0.08, audioCtx.currentTime);
-                gain.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + duration);
-                osc.connect(gain);
-                gain.connect(audioCtx.destination);
-                osc.start();
-                osc.stop(audioCtx.currentTime + duration);
-            } catch(e) {}
+            if (parsed.type === 'spotify') {
+                isAudioPlaying = true;
+                updateMusicButton(true);
+                if (embedContainer) embedContainer.classList.remove('hidden');
+                if (spotifyTip) spotifyTip.classList.remove('hidden');
+                if (label) label.innerText = "Spotify Player";
+                if (frameHolder) frameHolder.innerHTML = `<iframe src="${parsed.embedUrl}" width="100%" height="80" frameborder="0" allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture" loading="eager"></iframe>`;
+                showToast("Your selected Spotify song is ready — press Play in the player 🎵");
+                return;
+            }
+
+            if (parsed.type === 'youtube') {
+                isAudioPlaying = true;
+                updateMusicButton(true);
+                if (embedContainer) embedContainer.classList.remove('hidden');
+                if (spotifyTip) spotifyTip.classList.add('hidden');
+                if (label) label.innerText = "YouTube Music Player";
+                if (frameHolder) frameHolder.innerHTML = `<iframe src="${parsed.embedUrl}" width="100%" height="80" frameborder="0" allow="autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen loading="eager"></iframe>`;
+                showToast("Playing your selected YouTube music 🎵");
+                return;
+            }
+
+            // Direct MP3/local file: play ONLY the exact selected source.
+            if (customAudio) {
+                customAudio.src = parsed.embedUrl;
+                customAudio.currentTime = 0;
+                customAudio.onended = () => { isAudioPlaying = false; updateMusicButton(false); };
+                customAudio.onerror = () => {
+                    isAudioPlaying = false;
+                    updateMusicButton(false);
+                    showToast("The selected music could not be loaded. No replacement song was played.");
+                    console.error("Audio failed to load:", parsed.embedUrl);
+                };
+                customAudio.play().then(() => {
+                    isAudioPlaying = true;
+                    updateMusicButton(true);
+                    showToast("Playing your selected music 🎵");
+                }).catch(err => {
+                    isAudioPlaying = false;
+                    updateMusicButton(false);
+                    showToast("Music could not start. Check the MP3/file URL.");
+                    console.error("Selected audio play failed:", err);
+                });
+            }
         }
 
         function toggleEmbedVisibility() {
@@ -1045,9 +1056,7 @@
         function onPresetMusicSelect() {
             const select = document.getElementById('configPresetMusic');
             const input = document.getElementById('configMusicUrl');
-            if (select && select.value && input) {
-                input.value = select.value;
-            }
+            if (select && input) input.value = select.value || '';
         }
 
         function updateCountdown() {
@@ -1081,7 +1090,7 @@
         function saveConfiguration() {
             const nameInput = document.getElementById('configGirlName')?.value.trim();
             const dateInput = document.getElementById('configTargetDate')?.value;
-            const musicInput = document.getElementById('configMusicUrl')?.value.trim();
+            const musicInput = document.getElementById('configMusicUrl')?.value.trim() || '';
 
             if (nameInput) {
                 applyGirlfriendName(nameInput);
@@ -1092,12 +1101,11 @@
                 updateCountdown();
             }
 
-            if (musicInput) {
-                customAudioUrl = 'tumho.mp3';
-                if (isAudioPlaying) {
-                    toggleAudio(); // Restart with new source
-                    toggleAudio();
-                }
+            // Save EXACTLY what the user selected/entered.
+            customAudioUrl = musicInput;
+            if (isAudioPlaying) {
+                stopAudio();
+                if (customAudioUrl) toggleAudio(true);
             }
 
             saveToLocalStorage();
@@ -1140,7 +1148,13 @@
                     if (data.musicUrl) {
                         customAudioUrl = data.musicUrl;
                         const configMusic = document.getElementById('configMusicUrl');
+                        const presetMusic = document.getElementById('configPresetMusic');
                         if (configMusic) configMusic.value = data.musicUrl;
+                        if (presetMusic) {
+                            presetMusic.value = Array.from(presetMusic.options).some(o => o.value === data.musicUrl)
+                                ? data.musicUrl
+                                : '';
+                        }
                     }
                     if (data.letterText) {
                         const wishText = document.getElementById('birthdayWishText');
