@@ -1144,36 +1144,52 @@
             localStorage.setItem('birthday_site_data', JSON.stringify(payload));
         }
 
-        function loadFromLocalStorage() {
-            const saved = localStorage.getItem('birthday_site_data');
-            if (saved) {
-                try {
-                    const data = JSON.parse(saved);
-                    if (data.girlName) applyGirlfriendName(data.girlName);
-                    if (data.targetDate) {
-                        targetBirthday = new Date(data.targetDate);
-                        updateCountdown();
-                    }
-                    if (data.musicUrl) {
-                        customAudioUrl = normalizeAudioUrl(data.musicUrl);
-                        const configMusic = document.getElementById('configMusicUrl');
-                        if (configMusic) configMusic.value = data.musicUrl;
-                    }
-                    if (data.letterText) {
-                        const wishText = document.getElementById('birthdayWishText');
-                        if (wishText) wishText.innerHTML = data.letterText;
-                    }
-                    if (data.captions && Array.isArray(data.captions)) {
-                        data.captions.forEach((item, idx) => {
-                            const cap = document.getElementById(`caption-${idx+1}`);
-                            const img = document.getElementById(`img-${idx+1}`);
-                            if (cap && item.caption) cap.innerHTML = item.caption;
-                            if (img && item.imgSrc) img.src = item.imgSrc;
-                        });
-                    }
-                } catch(e) {}
+      function loadFromLocalStorage() {
+    const saved = localStorage.getItem('birthday_site_data');
+
+    if (saved) {
+        try {
+            const data = JSON.parse(saved);
+
+            // Keep saved name/date/music/letter if needed
+            if (data.girlName) {
+                applyGirlfriendName(data.girlName);
             }
+
+            if (data.targetDate) {
+                targetBirthday = new Date(data.targetDate);
+                updateCountdown();
+            }
+
+            if (data.musicUrl) {
+                customAudioUrl = normalizeAudioUrl(data.musicUrl);
+
+                const configMusic = document.getElementById('configMusicUrl');
+                if (configMusic) {
+                    configMusic.value = data.musicUrl;
+                }
+            }
+
+            if (data.letterText) {
+                const wishText = document.getElementById('birthdayWishText');
+
+                if (wishText) {
+                    wishText.innerHTML = data.letterText;
+                }
+            }
+
+            /*
+             * IMPORTANT:
+             * Do NOT load captions/images from localStorage.
+             *
+             * Captions and images should come from index.html
+             * so GitHub changes remain permanent.
+             */
+        } catch (e) {
+            console.error('Could not load saved settings:', e);
         }
+    }
+}
 
         // GENERATE CLEAN SHAREABLE LINK (No long code text!)
         function generateGirlfriendLink() {
